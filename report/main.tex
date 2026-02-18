@@ -573,30 +573,68 @@ HybridNCF отличается от обычной NCF одной вещью: в
 \begin{figure}[H]
 \centering
 \begin{tikzpicture}[
-  box/.style={draw, rounded corners, minimum width=3.5cm, minimum height=1cm, align=center, font=\small},
   arr/.style={-{Stealth[length=3mm]}, thick},
-  note/.style={font=\footnotesize\itshape, align=center}
+  server/.style={draw, thick, fill=blue!10, rounded corners,
+    minimum width=11cm, minimum height=1.2cm, align=center, font=\small},
+  client/.style={draw, thick, fill=gray!6, rounded corners,
+    minimum width=3cm, minimum height=3.2cm},
+  pub/.style={draw, fill=green!10, rounded corners,
+    minimum width=2.6cm, minimum height=0.6cm, align=center, font=\scriptsize},
+  priv/.style={draw, dashed, fill=red!8, rounded corners,
+    minimum width=2.6cm, minimum height=0.6cm, align=center, font=\scriptsize},
+  pubsrc/.style={draw, thick, fill=green!15, rounded corners,
+    minimum width=11cm, minimum height=0.9cm, align=center, font=\small}
 ]
 
-\node[box, fill=blue!15] (server) at (0, 0) {Сервер\\$\theta^{\text{shared}}$};
-\node[box, fill=red!10] (c1) at (-5, -3) {Клиент 1\\$\theta_1^{\text{priv}}$ + кэш};
-\node[box, fill=red!10] (c2) at (0, -3) {Клиент $k$\\$\theta_k^{\text{priv}}$ + кэш};
-\node[box, fill=red!10] (c3) at (5, -3) {Клиент $K$\\$\theta_K^{\text{priv}}$ + кэш};
+% Сервер
+\node[server] (server) at (0, 0) {\textbf{Сервер}\\агрегация shared-параметров};
 
-% Синие стрелки вниз (раздача параметров) — метки ближе к серверу
-\draw[arr, blue] (server) -- node[left, note, pos=0.25] {$\theta^{\text{shared}}$} (c1);
-\draw[arr, blue] (server) -- node[left, note, pos=0.25] {$\theta^{\text{shared}}$} (c2);
-\draw[arr, blue] (server) -- node[right, note, pos=0.25] {$\theta^{\text{shared}}$} (c3);
+% Стрелки сервер <-> клиенты
+\draw[arr, blue] (-3.8, -0.7) -- (-3.8, -2.0)
+  node[midway, left, font=\scriptsize] {shared $\downarrow$};
+\draw[arr, red!70!black] (-3.0, -2.0) -- (-3.0, -0.7)
+  node[midway, right, font=\scriptsize] {$\uparrow$ обнов.};
 
-% Красные стрелки вверх (отправка обновлений) — метки ближе к клиентам
-\draw[arr, red] (c1) -- node[left, note, pos=0.25] {$\theta_1^{\text{shared}}$} (server);
-\draw[arr, red] (c2) -- node[right, note, pos=0.25] {$\theta_k^{\text{shared}}$} (server);
-\draw[arr, red] (c3) -- node[right, note, pos=0.25] {$\theta_K^{\text{shared}}$} (server);
+\draw[arr, blue] (-0.4, -0.7) -- (-0.4, -2.0);
+\draw[arr, red!70!black] (0.4, -2.0) -- (0.4, -0.7);
 
-\node[font=\footnotesize, text width=4cm, align=center] at (0, -4.5) {Приватные эмбеддинги\\остаются на клиентах};
+\draw[arr, blue] (3.0, -0.7) -- (3.0, -2.0);
+\draw[arr, red!70!black] (3.8, -2.0) -- (3.8, -0.7);
+
+% Клиенты
+\node[client] (c1) at (-3.4, -3.9) {};
+\node[client] (c2) at (0, -3.9) {};
+\node[client] (c3) at (3.4, -3.9) {};
+
+\node[font=\scriptsize\bfseries] at (-3.4, -2.5) {Клиент 1};
+\node[font=\scriptsize\bfseries] at (0, -2.5) {Клиент $i$};
+\node[font=\scriptsize\bfseries] at (3.4, -2.5) {Клиент $n$};
+
+% Многоточие
+\node[font=\large] at (-1.7, -3.9) {\ldots};
+\node[font=\large] at (1.7, -3.9) {\ldots};
+
+% Содержимое клиентов
+\node[pub] at (-3.4, -3.4) {публичные};
+\node[priv] at (-3.4, -4.4) {приватные};
+
+\node[pub] at (0, -3.4) {публичные};
+\node[priv] at (0, -4.4) {приватные};
+
+\node[pub] at (3.4, -3.4) {публичные};
+\node[priv] at (3.4, -4.4) {приватные};
+
+% Публичные данные внизу
+\node[pubsrc] (pubdata) at (0, -6.5)
+  {Публичные данные --- общий набор, доступный всем клиентам};
+
+% Стрелки от публичных данных к клиентам
+\draw[arr, green!50!black, dashed] (pubdata.north) +(-3.4, 0) -- +(-3.4, 0.8);
+\draw[arr, green!50!black, dashed] (pubdata.north) +(0, 0) -- +(0, 0.8);
+\draw[arr, green!50!black, dashed] (pubdata.north) +(3.4, 0) -- +(3.4, 0.8);
 
 \end{tikzpicture}
-\caption{Схема взаимодействия сервера и клиентов в Hybrid Partial FedAvg}
+\caption{Схема Hybrid Partial FedAvg: публичные данные доступны всем клиентам, приватные остаются локально, агрегируются только shared-параметры}
 \label{fig:fl_protocol}
 \end{figure}
 
