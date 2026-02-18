@@ -1,0 +1,82 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+venv/
+ENV/
+env/
+.venv/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Data files (large, download separately)
+data/raw/*
+data/processed/*
+!data/raw/.gitkeep
+!data/processed/.gitkeep
+
+# Model checkpoints
+*.pt
+*.pth
+*.pkl
+checkpoints/
+
+# Logs
+logs/
+*.log
+wandb/
+runs/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Secrets
+.env
+*.key
+
+# Requirements documents (university originals, not part of project)
+*.docx
+
+# Extracted text from requirements (working files)
+report/*.txt
+
+# Claude working directory
+.claude/
+
+# Personal notes (not for repo)
+MATH_AND_RESULTS.md
+PROJECT_OVERVIEW.md
+
+# University requirements document (not part of project)
+Полный_текст_ВКР_и_НИР.md
+
+# Unused generated images
+report/images/genre_heatmap.png

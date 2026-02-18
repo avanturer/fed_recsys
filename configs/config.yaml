@@ -1,0 +1,24 @@
+data:
+  version: "1m"  # "100k" или "1m"
+  use_hybrid: true  # Гибридный сценарий (публичные + приватные данные)
+  public_user_ratio: 0.5  # Доля публичных пользователей (только для hybrid)
+  num_clients: 20
+  genre_concentration: 0.6
+  quantity_imbalance: 0.5
+  seed: 42
+
+model:
+  embedding_dim: 64
+  mlp_layers: [128, 64, 32]
+  dropout: 0.2
+
+training:
+  batch_size: 256
+  learning_rate: 0.001
+  weight_decay: 0.001
+  local_epochs: 2
+  centralized_epochs: 50
+
+federated:
+  num_rounds: 20
+  fraction_fit: 0.5
