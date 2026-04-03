@@ -16,7 +16,10 @@ import numpy as np
 import torch
 from torch.utils.data import DataLoader, Dataset
 
-from src.data.download import download_movielens, load_ratings
+from src.data.download import (
+    download_movielens, load_ratings,
+    download_amazon_music, load_amazon_ratings,
+)
 from src.models.ncf import NCF
 from src.utils.metrics import rmse, mae, evaluate_ranking
 
@@ -47,13 +50,29 @@ def main():
     np.random.seed(seed)
 
     # Данные
-    version = cfg["data"].get("version", "1m")
-    data_path = download_movielens(version=version)
-    ratings, _ = load_ratings(str(data_path), version=version)
+    dc = cfg["data"]
+    dataset = dc.get("dataset", f"ml-{dc.get('version', '1m')}")
+
+    if dataset.startswith("ml-"):
+        version = dataset.split("-")[1]
+        data_path = download_movielens(version=version)
+        ratings, _ = load_ratings(str(data_path), version=version)
+        label = f"MovieLens-{version.upper()}"
+    elif dataset == "amazon-music":
+        data_path = download_amazon_music()
+        ratings, _ = load_amazon_ratings(
+            str(data_path),
+            min_user_ratings=dc.get("min_user_ratings", 5),
+            min_item_ratings=dc.get("min_item_ratings", 5),
+        )
+        label = "Amazon Digital Music"
+    else:
+        raise ValueError(f"Неизвестный датасет: {dataset}")
+
     n_users = ratings["user_id"].nunique()
     n_items = ratings["item_id"].nunique()
-    print(f"Данные: MovieLens-{version.upper()}")
-    print(f"        {n_users} юзеров, {n_items} фильмов, {len(ratings)} рейтингов")
+    print(f"Данные: {label}")
+    print(f"        {n_users} юзеров, {n_items} айтемов, {len(ratings)} рейтингов")
 
     ratings = ratings.sample(frac=1, random_state=seed).reset_index(drop=True)
     n = len(ratings)

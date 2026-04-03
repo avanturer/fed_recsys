@@ -29,6 +29,7 @@ env/
 # IDE
 .idea/
 .vscode/
+.claude/
 *.swp
 *.swo
 *~
@@ -39,8 +40,10 @@ env/
 # Data files (large, download separately)
 data/raw/*
 data/processed/*
+data/results/*
 !data/raw/.gitkeep
 !data/processed/.gitkeep
+!data/results/.gitkeep
 
 # Model checkpoints
 *.pt
@@ -68,9 +71,6 @@ Thumbs.db
 # Extracted text from requirements (working files)
 report/*.txt
 
-# Claude working directory
-.claude/
-
 # Personal notes (not for repo)
 MATH_AND_RESULTS.md
 PROJECT_OVERVIEW.md
@@ -78,5 +78,5 @@ PROJECT_OVERVIEW.md
 # University requirements document (not part of project)
 Полный_текст_ВКР_и_НИР.md
 
-# Unused generated images
+# Неиспользуемые изображения
 report/images/genre_heatmap.png

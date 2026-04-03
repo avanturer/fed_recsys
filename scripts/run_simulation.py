@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """
-Запуск FL-симуляции: 20 клиентов с приватными данными,
-FedAvg агрегация только shared-параметров (MLP + output).
+Запуск FL-симуляции: клиенты с приватными данными,
+FedAvg/FedProx агрегация только shared-параметров.
+Опционально: дифференциальная приватность.
 """
 import sys
 from pathlib import Path
@@ -20,6 +21,10 @@ def main():
     tc = cfg["training"]
     fc = cfg["federated"]
 
+    # Определяем mu: для fedprox берём из конфига, для fedavg — 0
+    strategy = fc.get("strategy", "fedavg")
+    mu = fc.get("proximal_mu", 0.01) if strategy == "fedprox" else 0.0
+
     sim_cfg = {
         "num_rounds": fc["num_rounds"],
         "fraction_fit": fc["fraction_fit"],
@@ -30,11 +35,18 @@ def main():
         "local_epochs": tc["local_epochs"],
         "lr": tc["learning_rate"],
         "weight_decay": fc.get("weight_decay", tc.get("weight_decay", 0)),
+        "proximal_mu": mu,
+        "dp": fc.get("dp", {}),
     }
 
     print("=" * 55)
     print("Федеративное обучение — симуляция")
     print("=" * 55)
+    print(f"Стратегия: {strategy}" + (f" (mu={mu})" if mu > 0 else ""))
+    dp_cfg = fc.get("dp", {})
+    if dp_cfg.get("enabled"):
+        print(f"DP:        C={dp_cfg['max_grad_norm']}, "
+              f"sigma={dp_cfg['noise_multiplier']}")
 
     run_simulation(sim_cfg)
 

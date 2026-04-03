@@ -8,10 +8,16 @@ from sklearn.model_selection import train_test_split
 from torch.utils.data import Dataset
 
 
-# Жанры для распределения по клиентам
+# Жанры для распределения по клиентам (MovieLens)
 TARGET_GENRES = [
     "Action", "Comedy", "Drama", "Romance", "Thriller",
     "Sci-Fi", "Horror", "Adventure", "Crime", "Fantasy"
+]
+
+# Категории для распределения по клиентам (Amazon Digital Music)
+TARGET_CATEGORIES_AMAZON = [
+    "Rock", "Pop", "Jazz", "Classical", "Country",
+    "R&B", "Hip-Hop", "Electronic", "Folk", "Blues",
 ]
 
 
@@ -70,9 +76,23 @@ class HybridClientDataset(Dataset):
         }
 
 
-def _assign_primary_genre(movies):
-    """Для каждого фильма определяем основной жанр из TARGET_GENRES."""
-    genre_cols = [g for g in TARGET_GENRES if g in movies.columns]
+def _assign_primary_genre(movies, target_genres=None):
+    """Для каждого айтема определяем основной жанр/категорию."""
+    if target_genres is None:
+        target_genres = TARGET_GENRES
+    genre_cols = [g for g in target_genres if g in movies.columns]
+    if not genre_cols:
+        # Fallback: берём все бинарные колонки кроме item_id и title
+        skip = {"item_id", "title"}
+        genre_cols = [c for c in movies.columns
+                      if c not in skip and movies[c].dtype in ("int64", "int32", "float64")
+                      and movies[c].isin([0, 1]).all()]
+        if genre_cols:
+            print(f"  Предупреждение: целевые категории не найдены в данных, "
+                  f"используются: {genre_cols[:5]}...")
+        else:
+            print("  Предупреждение: не найдены бинарные колонки категорий, "
+                  "все айтемы получат жанр 'Other'")
     mapping = {}
     for _, row in movies.iterrows():
         genres = [g for g in genre_cols if row[g] == 1]
@@ -91,7 +111,8 @@ def _find_user_genre_pref(ratings):
 
 def split_non_iid(ratings, movies, num_clients=20,
                   genre_concentration=0.6, quantity_imbalance=0.5,
-                  seed=42, output_dir="data/processed"):
+                  seed=42, output_dir="data/processed",
+                  target_genres=None):
     """
     Разбивает рейтинги на клиентов с non-IID распределением.
 
@@ -104,7 +125,7 @@ def split_non_iid(ratings, movies, num_clients=20,
     out = Path(output_dir)
     out.mkdir(parents=True, exist_ok=True)
 
-    item_genre_map, genre_cols = _assign_primary_genre(movies)
+    item_genre_map, genre_cols = _assign_primary_genre(movies, target_genres)
 
     ratings = ratings.copy()
     ratings["genre"] = ratings["item_id"].map(item_genre_map).fillna("Other")
@@ -221,7 +242,8 @@ def split_non_iid(ratings, movies, num_clients=20,
 def split_hybrid_non_iid(ratings, movies, num_clients=20,
                           public_user_ratio=0.5, genre_concentration=0.6,
                           quantity_imbalance=0.5, seed=42,
-                          output_dir="data/processed"):
+                          output_dir="data/processed",
+                          target_genres=None):
     """
     Гибридный сценарий: публичные + приватные данные.
 
@@ -243,7 +265,7 @@ def split_hybrid_non_iid(ratings, movies, num_clients=20,
     out = Path(output_dir)
     out.mkdir(parents=True, exist_ok=True)
 
-    item_genre_map, genre_cols = _assign_primary_genre(movies)
+    item_genre_map, genre_cols = _assign_primary_genre(movies, target_genres)
     ratings = ratings.copy()
     ratings["genre"] = ratings["item_id"].map(item_genre_map).fillna("Other")
 

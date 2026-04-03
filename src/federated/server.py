@@ -263,7 +263,14 @@ def run_simulation(cfg, data_dir="data/processed"):
         shutil.rmtree(emb_cache)
 
     mode = "гибридный" if is_hybrid else "non-IID"
+    mu = cfg.get("proximal_mu", 0.0)
+    strategy = "FedProx" if mu > 0 else "FedAvg"
+    dp_cfg = cfg.get("dp", {})
+
     print(f"Режим:    {mode}")
+    print(f"Стратегия: {strategy}" + (f" (mu={mu})" if mu > 0 else ""))
+    if dp_cfg.get("enabled"):
+        print(f"DP:       C={dp_cfg['max_grad_norm']}, sigma={dp_cfg['noise_multiplier']}")
     print(f"Клиентов: {n_clients}")
     print(f"Раундов:  {cfg['num_rounds']}")
     print(f"Fit:      {cfg['fraction_fit']*100:.0f}% клиентов за раунд")

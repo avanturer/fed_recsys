@@ -1,4 +1,6 @@
-"""Скачивание и загрузка MovieLens датасетов (100K и 1M)."""
+"""Скачивание и загрузка датасетов (MovieLens, Amazon Digital Music)."""
+import gzip
+import json
 import urllib.request
 import zipfile
 from pathlib import Path
@@ -8,6 +10,15 @@ import pandas as pd
 
 ML_100K_URL = "https://files.grouplens.org/datasets/movielens/ml-100k.zip"
 ML_1M_URL = "https://files.grouplens.org/datasets/movielens/ml-1m.zip"
+
+AMAZON_MUSIC_REVIEWS_URL = (
+    "https://datarepo.eng.ucsd.edu/mcauley_group/data/amazon_2023/"
+    "raw/review_categories/Digital_Music.jsonl.gz"
+)
+AMAZON_MUSIC_META_URL = (
+    "https://datarepo.eng.ucsd.edu/mcauley_group/data/amazon_2023/"
+    "raw/meta_categories/meta_Digital_Music.jsonl.gz"
+)
 
 GENRE_COLS = [
     "unknown", "Action", "Adventure", "Animation", "Children",
@@ -138,5 +149,156 @@ def load_movies(data_dir="data/raw/ml-100k", version="100k", item_map=None):
         df["item_id"] = df["item_id"].astype(int)
     else:
         df["item_id"] -= 1
+
+    return df
+
+
+# --- Amazon Digital Music ---
+
+MUSIC_CATEGORIES = [
+    "Rock", "Pop", "Jazz", "Classical", "Country",
+    "R&B", "Hip-Hop", "Electronic", "Folk", "Blues",
+    "Metal", "Soul", "Reggae", "Latin", "Alternative",
+]
+
+
+def download_amazon_music(data_dir="data/raw"):
+    """Скачивает Amazon Digital Music (reviews + metadata)."""
+    path = Path(data_dir) / "amazon-music"
+    path.mkdir(parents=True, exist_ok=True)
+
+    reviews_gz = path / "Digital_Music.jsonl.gz"
+    meta_gz = path / "meta_Digital_Music.jsonl.gz"
+
+    if not reviews_gz.exists():
+        print("Скачиваю Amazon Digital Music (reviews)...")
+        urllib.request.urlretrieve(AMAZON_MUSIC_REVIEWS_URL, reviews_gz)
+        print(f"  Готово: {reviews_gz}")
+
+    if not meta_gz.exists():
+        print("Скачиваю Amazon Digital Music (metadata)...")
+        urllib.request.urlretrieve(AMAZON_MUSIC_META_URL, meta_gz)
+        print(f"  Готово: {meta_gz}")
+
+    return path
+
+
+def _k_core_filter(df, min_user=5, min_item=5, max_iter=100):
+    """Итеративная k-core фильтрация: убираем юзеров/айтемов с < k оценок."""
+    for _ in range(max_iter):
+        prev = len(df)
+        if df.empty:
+            break
+        uc = df["user_id"].value_counts()
+        df = df[df["user_id"].isin(uc[uc >= min_user].index)]
+        ic = df["item_id"].value_counts()
+        df = df[df["item_id"].isin(ic[ic >= min_item].index)]
+        if len(df) == prev:
+            break
+    if df.empty:
+        raise ValueError(
+            f"k-core фильтрация ({min_user}/{min_item}) удалила все данные. "
+            f"Попробуйте уменьшить min_user_ratings/min_item_ratings."
+        )
+    return df
+
+
+def load_amazon_ratings(data_dir="data/raw/amazon-music",
+                        min_user_ratings=5, min_item_ratings=5):
+    """
+    Загружаем рейтинги Amazon Digital Music, k-core фильтрация,
+    ремаппинг в contiguous 0-indexed ID.
+
+    Returns:
+        (DataFrame[user_id, item_id, rating, timestamp], item_map)
+    """
+    path = Path(data_dir)
+    reviews_gz = path / "Digital_Music.jsonl.gz"
+
+    rows = []
+    with gzip.open(reviews_gz, "rt", encoding="utf-8") as f:
+        for line in f:
+            rec = json.loads(line)
+            # Совместимость с разными версиями Amazon Review Dataset (2018/2023)
+            uid = rec.get("user_id", rec.get("reviewerID", ""))
+            iid = rec.get("parent_asin", rec.get("asin", ""))
+            score = float(rec.get("rating", rec.get("overall", 0)))
+            ts = int(rec.get("timestamp", rec.get("unixReviewTime", 0)))
+            if uid and iid and score > 0:
+                rows.append({
+                    "user_id": uid,
+                    "item_id": iid,
+                    "rating": score,
+                    "timestamp": ts,
+                })
+
+    df = pd.DataFrame(rows)
+    if df.empty:
+        raise ValueError(f"Не удалось загрузить рейтинги из {reviews_gz}")
+    print(f"  Сырых рейтингов: {len(df)}, "
+          f"юзеров: {df['user_id'].nunique()}, "
+          f"айтемов: {df['item_id'].nunique()}")
+
+    # k-core фильтрация
+    df = _k_core_filter(df, min_user=min_user_ratings, min_item=min_item_ratings)
+    print(f"  После {min_user_ratings}-core: {len(df)} рейтингов, "
+          f"юзеров: {df['user_id'].nunique()}, "
+          f"айтемов: {df['item_id'].nunique()}")
+
+    # Ремаппинг в contiguous 0-indexed
+    unique_users = sorted(df["user_id"].unique())
+    unique_items = sorted(df["item_id"].unique())
+
+    user_map = {old: new for new, old in enumerate(unique_users)}
+    item_map = {old: new for new, old in enumerate(unique_items)}
+
+    df["user_id"] = df["user_id"].map(user_map)
+    df["item_id"] = df["item_id"].map(item_map)
+
+    return df, item_map
+
+
+def load_amazon_items(data_dir="data/raw/amazon-music", item_map=None):
+    """
+    Загружаем метаданные Amazon Digital Music, извлекаем категории.
+
+    Returns:
+        DataFrame с columns [item_id, title, Rock, Pop, Jazz, ...]
+    """
+    path = Path(data_dir)
+    meta_gz = path / "meta_Digital_Music.jsonl.gz"
+
+    items = []
+    with gzip.open(meta_gz, "rt", encoding="utf-8") as f:
+        for line in f:
+            rec = json.loads(line)
+            asin = rec.get("parent_asin", rec.get("asin", ""))
+            title = rec.get("title", "")
+            # Разные версии используют categories / category / main_category
+            cats = rec.get("categories", rec.get("category", []))
+            if isinstance(cats, str):
+                cats = [cats]
+            if cats and isinstance(cats[0], list):
+                cats = [c for sub in cats for c in sub]
+            # main_category — часто самая информативная
+            main_cat = rec.get("main_category", "")
+            if main_cat and main_cat not in cats:
+                cats.append(main_cat)
+            items.append({"item_id": asin, "title": title, "categories": cats})
+
+    df = pd.DataFrame(items)
+
+    # One-hot по целевым категориям
+    for cat in MUSIC_CATEGORIES:
+        df[cat] = df["categories"].apply(
+            lambda cs: int(any(cat.lower() in c.lower() for c in cs))
+        )
+    df = df.drop(columns=["categories"])
+
+    # Ремаппинг
+    if item_map is not None:
+        df["item_id"] = df["item_id"].map(item_map)
+        df = df.dropna(subset=["item_id"])
+        df["item_id"] = df["item_id"].astype(int)
 
     return df
