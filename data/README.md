@@ -7,11 +7,14 @@
 ```
 data/
 ├── raw/                    # исходные датасеты
-│   └── ml-100k/           # MovieLens-100K после скачивания
-├── processed/              # обработанные данные
+│   ├── ml-1m/             # MovieLens-1M
+│   └── amazon-music/      # Amazon Digital Music
+├── processed/              # обработанные данные клиентов
+│   ├── global_info.pkl    # общая информация о разбиении
 │   ├── client_0.pkl       # данные клиента 0
 │   ├── client_1.pkl       # данные клиента 1
 │   └── ...
+├── results/                # результаты экспериментов
 └── README.md
 ```
 
@@ -21,8 +24,10 @@ data/
 python scripts/prepare_data.py
 ```
 
-Скрипт автоматически скачает MovieLens-100K и разобьёт на 20 клиентов.
+Датасет задаётся в `configs/config.yaml` (поле `data.dataset`).
+Скрипт автоматически скачает данные и разобьёт на клиентов.
 
-## Источник
+## Источники
 
-MovieLens-100K: https://grouplens.org/datasets/movielens/100k/
+- MovieLens-1M: https://grouplens.org/datasets/movielens/1m/
+- Amazon Digital Music: https://cseweb.ucsd.edu/~jmcauley/datasets/amazon_v2/

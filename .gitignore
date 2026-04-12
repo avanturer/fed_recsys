@@ -37,7 +37,7 @@ env/
 # Jupyter
 .ipynb_checkpoints/
 
-# Data files (large, download separately)
+# Данные (скачиваются отдельно)
 data/raw/*
 data/processed/*
 data/results/*
@@ -45,38 +45,29 @@ data/results/*
 !data/processed/.gitkeep
 !data/results/.gitkeep
 
-# Model checkpoints
+# Чекпоинты моделей
 *.pt
 *.pth
 *.pkl
 checkpoints/
 
-# Logs
+# Логи
 logs/
 *.log
 wandb/
 runs/
 
-# OS
+# ОС
 .DS_Store
 Thumbs.db
 
-# Secrets
+# Секреты
 .env
 *.key
 
-# Requirements documents (university originals, not part of project)
+# Отчёт и документация (не часть кода)
+report/
 *.docx
-
-# Extracted text from requirements (working files)
-report/*.txt
-
-# Personal notes (not for repo)
-MATH_AND_RESULTS.md
-PROJECT_OVERVIEW.md
-
-# University requirements document (not part of project)
-Полный_текст_ВКР_и_НИР.md
-
-# Неиспользуемые изображения
-report/images/genre_heatmap.png
+*.md
+!README.md
+!data/README.md
