@@ -12,12 +12,12 @@ ML_100K_URL = "https://files.grouplens.org/datasets/movielens/ml-100k.zip"
 ML_1M_URL = "https://files.grouplens.org/datasets/movielens/ml-1m.zip"
 
 AMAZON_MUSIC_REVIEWS_URL = (
-    "https://datarepo.eng.ucsd.edu/mcauley_group/data/amazon_2023/"
-    "raw/review_categories/Digital_Music.jsonl.gz"
+    "https://huggingface.co/datasets/McAuley-Lab/Amazon-Reviews-2023/"
+    "resolve/main/raw/review_categories/Digital_Music.jsonl"
 )
 AMAZON_MUSIC_META_URL = (
-    "https://datarepo.eng.ucsd.edu/mcauley_group/data/amazon_2023/"
-    "raw/meta_categories/meta_Digital_Music.jsonl.gz"
+    "https://huggingface.co/datasets/McAuley-Lab/Amazon-Reviews-2023/"
+    "resolve/main/raw/meta_categories/meta_Digital_Music.jsonl"
 )
 
 GENRE_COLS = [
@@ -167,18 +167,22 @@ def download_amazon_music(data_dir="data/raw"):
     path = Path(data_dir) / "amazon-music"
     path.mkdir(parents=True, exist_ok=True)
 
+    reviews = path / "Digital_Music.jsonl"
+    meta = path / "meta_Digital_Music.jsonl"
+
+    # Совместимость: если есть старый .gz — тоже подходит
     reviews_gz = path / "Digital_Music.jsonl.gz"
     meta_gz = path / "meta_Digital_Music.jsonl.gz"
 
-    if not reviews_gz.exists():
+    if not reviews.exists() and not reviews_gz.exists():
         print("Скачиваю Amazon Digital Music (reviews)...")
-        urllib.request.urlretrieve(AMAZON_MUSIC_REVIEWS_URL, reviews_gz)
-        print(f"  Готово: {reviews_gz}")
+        urllib.request.urlretrieve(AMAZON_MUSIC_REVIEWS_URL, reviews)
+        print(f"  Готово: {reviews}")
 
-    if not meta_gz.exists():
+    if not meta.exists() and not meta_gz.exists():
         print("Скачиваю Amazon Digital Music (metadata)...")
-        urllib.request.urlretrieve(AMAZON_MUSIC_META_URL, meta_gz)
-        print(f"  Готово: {meta_gz}")
+        urllib.request.urlretrieve(AMAZON_MUSIC_META_URL, meta)
+        print(f"  Готово: {meta}")
 
     return path
 
@@ -214,9 +218,12 @@ def load_amazon_ratings(data_dir="data/raw/amazon-music",
     """
     path = Path(data_dir)
     reviews_gz = path / "Digital_Music.jsonl.gz"
+    reviews_plain = path / "Digital_Music.jsonl"
+    reviews_file = reviews_gz if reviews_gz.exists() else reviews_plain
 
     rows = []
-    with gzip.open(reviews_gz, "rt", encoding="utf-8") as f:
+    opener = gzip.open if reviews_file.suffix == ".gz" else open
+    with opener(reviews_file, "rt", encoding="utf-8") as f:
         for line in f:
             rec = json.loads(line)
             # Совместимость с разными версиями Amazon Review Dataset (2018/2023)
@@ -267,9 +274,12 @@ def load_amazon_items(data_dir="data/raw/amazon-music", item_map=None):
     """
     path = Path(data_dir)
     meta_gz = path / "meta_Digital_Music.jsonl.gz"
+    meta_plain = path / "meta_Digital_Music.jsonl"
+    meta_file = meta_gz if meta_gz.exists() else meta_plain
 
     items = []
-    with gzip.open(meta_gz, "rt", encoding="utf-8") as f:
+    opener = gzip.open if meta_file.suffix == ".gz" else open
+    with opener(meta_file, "rt", encoding="utf-8") as f:
         for line in f:
             rec = json.loads(line)
             asin = rec.get("parent_asin", rec.get("asin", ""))

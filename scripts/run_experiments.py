@@ -15,6 +15,7 @@ import os
 import sys
 import shutil
 import pickle
+import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -23,6 +24,31 @@ import yaml
 
 DATA_DIR = Path("data/processed")
 RESULTS_DIR = Path("data/results")
+
+# Общий счётчик для прогресса
+TOTAL_STEPS = 16  # 2 датасета * (prepare + centralized + 2 FL + 4 DP)
+_current_step = 0
+_start_time = None
+
+
+def _progress(label):
+    """Выводит прогресс-бар с номером шага и прошедшим временем."""
+    global _current_step, _start_time
+    if _start_time is None:
+        _start_time = time.time()
+    _current_step += 1
+    elapsed = time.time() - _start_time
+    mins = int(elapsed // 60)
+    secs = int(elapsed % 60)
+    bar_len = 30
+    filled = int(bar_len * _current_step / TOTAL_STEPS)
+    bar = "█" * filled + "░" * (bar_len - filled)
+    pct = _current_step / TOTAL_STEPS * 100
+    print(f"\n{'='*60}")
+    print(f"  [{bar}] {pct:.0f}%  ({_current_step}/{TOTAL_STEPS})  {mins:02d}:{secs:02d}")
+    print(f"  >>> {label}")
+    print(f"{'='*60}")
+    sys.stdout.flush()
 
 
 def load_config():
@@ -92,21 +118,17 @@ def run_dataset_experiments(dataset_name, base_cfg):
     """Все эксперименты для одного датасета."""
     cfg = base_cfg.copy()
 
-    print(f"\n{'='*60}")
-    print(f"ДАТАСЕТ: {dataset_name}")
-    print(f"{'='*60}")
-
     # 1. Подготовка данных
-    print("\n--- Подготовка данных ---")
+    _progress(f"{dataset_name} — подготовка данных")
     run_prepare(cfg)
 
     # 2. Централизованный baseline
-    print("\n--- Централизованный baseline ---")
+    _progress(f"{dataset_name} — централизованный baseline")
     run_centralized(cfg)
     save_results("centralized", dataset_name)
 
     # 3. FedAvg
-    print("\n--- FedAvg ---")
+    _progress(f"{dataset_name} — FedAvg")
     cfg["federated"]["strategy"] = "fedavg"
     cfg["federated"]["proximal_mu"] = 0.0
     cfg["federated"]["dp"]["enabled"] = False
@@ -114,28 +136,37 @@ def run_dataset_experiments(dataset_name, base_cfg):
     save_results("fedavg", dataset_name)
 
     # 4. FedProx
-    print("\n--- FedProx (mu=0.01) ---")
+    _progress(f"{dataset_name} — FedProx (mu=0.01)")
     cfg["federated"]["strategy"] = "fedprox"
     cfg["federated"]["proximal_mu"] = 0.01
     cfg["federated"]["dp"]["enabled"] = False
     run_fl(cfg)
     save_results("fedprox", dataset_name)
 
-    # 5. FedAvg + DP
-    print("\n--- FedAvg + DP ---")
-    cfg["federated"]["strategy"] = "fedavg"
-    cfg["federated"]["proximal_mu"] = 0.0
-    cfg["federated"]["dp"]["enabled"] = True
-    run_fl(cfg)
-    save_results("fedavg_dp", dataset_name)
+    # DP-ablation: два режима шума
+    dp_configs = [
+        ("dp_s05", 0.5, 1.0),   # умеренный шум
+        ("dp_s01", 0.1, 1.0),   # сильный шум
+    ]
 
-    # 6. FedProx + DP
-    print("\n--- FedProx + DP ---")
-    cfg["federated"]["strategy"] = "fedprox"
-    cfg["federated"]["proximal_mu"] = 0.01
-    cfg["federated"]["dp"]["enabled"] = True
-    run_fl(cfg)
-    save_results("fedprox_dp", dataset_name)
+    for dp_tag, sigma, clip_norm in dp_configs:
+        # FedAvg + DP
+        _progress(f"{dataset_name} — FedAvg + DP (sigma={sigma})")
+        cfg["federated"]["strategy"] = "fedavg"
+        cfg["federated"]["proximal_mu"] = 0.0
+        cfg["federated"]["dp"]["enabled"] = True
+        cfg["federated"]["dp"]["noise_multiplier"] = sigma
+        cfg["federated"]["dp"]["max_grad_norm"] = clip_norm
+        run_fl(cfg)
+        save_results(f"fedavg_{dp_tag}", dataset_name)
+
+        # FedProx + DP
+        _progress(f"{dataset_name} — FedProx + DP (sigma={sigma})")
+        cfg["federated"]["strategy"] = "fedprox"
+        cfg["federated"]["proximal_mu"] = 0.01
+        cfg["federated"]["dp"]["enabled"] = True
+        run_fl(cfg)
+        save_results(f"fedprox_{dp_tag}", dataset_name)
 
     # Итоговая таблица
     print(f"\n{'='*60}")
@@ -143,7 +174,10 @@ def run_dataset_experiments(dataset_name, base_cfg):
     print(f"{'='*60}")
     res = RESULTS_DIR / dataset_name
     print_metrics(res / "centralized" / "centralized_history.pkl", "Centralized")
-    for exp in ["fedavg", "fedprox", "fedavg_dp", "fedprox_dp"]:
+    experiments = ["fedavg", "fedprox"]
+    for dp_tag, sigma, _ in dp_configs:
+        experiments += [f"fedavg_{dp_tag}", f"fedprox_{dp_tag}"]
+    for exp in experiments:
         print_metrics(res / exp / "fl_history.pkl", exp.upper().replace("_", "+"))
 
 
@@ -159,15 +193,25 @@ def main():
         ml_cfg["data"]["num_clients"] = 20
         run_dataset_experiments("ml-1m", ml_cfg)
 
-        # Amazon Digital Music
+        # Amazon Digital Music (разрежённый — усиленная регуляризация)
         am_cfg = yaml.safe_load(yaml.dump(base_cfg))
         am_cfg["data"]["dataset"] = "amazon-music"
         am_cfg["data"]["num_clients"] = 10
-        am_cfg["model"]["embedding_dim"] = 32
+        am_cfg["data"]["min_user_ratings"] = 2
+        am_cfg["data"]["min_item_ratings"] = 2
+        am_cfg["model"]["embedding_dim"] = 16
+        am_cfg["model"]["mlp_layers"] = [64, 32]
+        am_cfg["model"]["dropout"] = 0.3
         am_cfg["training"]["local_epochs"] = 3
+        am_cfg["training"]["weight_decay"] = 0.01
         run_dataset_experiments("amazon-music", am_cfg)
 
-        print("\n\nВсе эксперименты завершены.")
+        elapsed = time.time() - _start_time
+        mins = int(elapsed // 60)
+        secs = int(elapsed % 60)
+        print(f"\n\n{'='*60}")
+        print(f"  Все эксперименты завершены за {mins:02d}:{secs:02d}")
+        print(f"{'='*60}")
     finally:
         # Восстанавливаем оригинальный конфиг
         save_config(original_cfg, "configs/config.yaml")

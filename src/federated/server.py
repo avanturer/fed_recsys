@@ -16,6 +16,7 @@ import flwr as fl
 from src.models.ncf import NCF, HybridNCF
 from src.data.splitter import load_global_info, load_client_data
 from src.federated.client import make_client_fn, make_hybrid_client_fn
+from src.federated.privacy import PrivacyAccountant
 from src.utils.metrics import rmse, mae, evaluate_ranking, hit_rate_at_k, ndcg_at_k
 
 
@@ -322,6 +323,30 @@ def run_simulation(cfg, data_dir="data/processed"):
         client_resources={"num_cpus": 1, "num_gpus": 0.0},
     )
 
+    # Privacy accounting
+    privacy_info = {}
+    if dp_cfg.get("enabled"):
+        accountant = PrivacyAccountant(
+            dp_cfg["noise_multiplier"],
+            dp_cfg.get("target_delta", 1e-5),
+        )
+        # Каждый клиент участвует в каждом раунде с вероятностью fraction_fit
+        # Считаем worst-case: клиент участвует во всех раундах
+        for _ in range(cfg["num_rounds"]):
+            accountant.step()
+        eps = accountant.get_epsilon()
+        eps_adv = accountant.get_epsilon_advanced()
+        delta = dp_cfg.get("target_delta", 1e-5)
+        print(f"\n  Приватность (simple composition):   eps={eps:.2f}, delta={delta}")
+        print(f"  Приватность (advanced composition): eps={eps_adv:.2f}, delta={delta}")
+        privacy_info = {
+            "dp_epsilon": eps,
+            "dp_epsilon_advanced": eps_adv,
+            "dp_delta": delta,
+            "dp_sigma": dp_cfg["noise_multiplier"],
+            "dp_max_grad_norm": dp_cfg["max_grad_norm"],
+        }
+
     # Пост-FL оценка на тестовых данных
     post_eval = {}
     if params_path.exists():
@@ -339,6 +364,7 @@ def run_simulation(cfg, data_dir="data/processed"):
         "metrics_distributed_fit": getattr(history, "metrics_distributed_fit", {}),
     }
     fl_data.update(post_eval)
+    fl_data.update(privacy_info)
 
     with open(out_path, "wb") as f:
         pickle.dump(fl_data, f)
