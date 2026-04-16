@@ -26,7 +26,7 @@ DATA_DIR = Path("data/processed")
 RESULTS_DIR = Path("data/results")
 
 # Общий счётчик для прогресса
-TOTAL_STEPS = 16  # 2 датасета * (prepare + centralized + 2 FL + 4 DP)
+TOTAL_STEPS = 22  # 2 датасета * (prepare + central + 2 FL + pure-non-IID prep/run + restore + 4 DP)
 _current_step = 0
 _start_time = None
 
@@ -118,8 +118,9 @@ def run_dataset_experiments(dataset_name, base_cfg):
     """Все эксперименты для одного датасета."""
     cfg = base_cfg.copy()
 
-    # 1. Подготовка данных
-    _progress(f"{dataset_name} — подготовка данных")
+    # 1. Подготовка гибридных данных
+    _progress(f"{dataset_name} — подготовка данных (hybrid)")
+    cfg["data"]["use_hybrid"] = True
     run_prepare(cfg)
 
     # 2. Централизованный baseline
@@ -127,21 +128,38 @@ def run_dataset_experiments(dataset_name, base_cfg):
     run_centralized(cfg)
     save_results("centralized", dataset_name)
 
-    # 3. FedAvg
-    _progress(f"{dataset_name} — FedAvg")
+    # 3. FedAvg (hybrid)
+    _progress(f"{dataset_name} — FedAvg (hybrid)")
     cfg["federated"]["strategy"] = "fedavg"
     cfg["federated"]["proximal_mu"] = 0.0
     cfg["federated"]["dp"]["enabled"] = False
     run_fl(cfg)
     save_results("fedavg", dataset_name)
 
-    # 4. FedProx
-    _progress(f"{dataset_name} — FedProx (mu=0.01)")
+    # 4. FedProx (hybrid)
+    _progress(f"{dataset_name} — FedProx (mu=0.01, hybrid)")
     cfg["federated"]["strategy"] = "fedprox"
     cfg["federated"]["proximal_mu"] = 0.01
     cfg["federated"]["dp"]["enabled"] = False
     run_fl(cfg)
     save_results("fedprox", dataset_name)
+
+    # 5. Ablation: чистый non-IID (без публичных) — чтобы показать ценность hybrid
+    _progress(f"{dataset_name} — подготовка non-IID (без публичных)")
+    cfg_pure = yaml.safe_load(yaml.dump(base_cfg))
+    cfg_pure["data"]["use_hybrid"] = False
+    run_prepare(cfg_pure)
+    _progress(f"{dataset_name} — FedAvg (pure non-IID)")
+    cfg_pure["federated"]["strategy"] = "fedavg"
+    cfg_pure["federated"]["proximal_mu"] = 0.0
+    cfg_pure["federated"]["dp"]["enabled"] = False
+    run_fl(cfg_pure)
+    save_results("fedavg_pure_noniid", dataset_name)
+
+    # Возвращаем hybrid-разбиение для DP-экспериментов
+    _progress(f"{dataset_name} — восстановление hybrid-разбиения")
+    cfg["data"]["use_hybrid"] = True
+    run_prepare(cfg)
 
     # DP-ablation: два режима шума
     dp_configs = [
@@ -174,7 +192,7 @@ def run_dataset_experiments(dataset_name, base_cfg):
     print(f"{'='*60}")
     res = RESULTS_DIR / dataset_name
     print_metrics(res / "centralized" / "centralized_history.pkl", "Centralized")
-    experiments = ["fedavg", "fedprox"]
+    experiments = ["fedavg_pure_noniid", "fedavg", "fedprox"]
     for dp_tag, sigma, _ in dp_configs:
         experiments += [f"fedavg_{dp_tag}", f"fedprox_{dp_tag}"]
     for exp in experiments:

@@ -124,8 +124,10 @@ def plot_all_methods_comparison(dataset_name, out_path):
         'Centralized': ('centralized', 'centralized_history.pkl'),
         'FedAvg': ('fedavg', 'fl_history.pkl'),
         'FedProx': ('fedprox', 'fl_history.pkl'),
-        'FedAvg+DP': ('fedavg_dp', 'fl_history.pkl'),
-        'FedProx+DP': ('fedprox_dp', 'fl_history.pkl'),
+        'FedAvg+DP (σ=0.5)': ('fedavg_dp_s05', 'fl_history.pkl'),
+        'FedProx+DP (σ=0.5)': ('fedprox_dp_s05', 'fl_history.pkl'),
+        'FedAvg+DP (σ=0.1)': ('fedavg_dp_s01', 'fl_history.pkl'),
+        'FedProx+DP (σ=0.1)': ('fedprox_dp_s01', 'fl_history.pkl'),
     }
 
     metric_names = ['RMSE', 'MAE', 'HR@10', 'NDCG@10']
@@ -151,7 +153,8 @@ def plot_all_methods_comparison(dataset_name, out_path):
     x = np.arange(len(metric_names))
     n = len(results)
     w = 0.8 / n
-    colors = ['#2196F3', '#FF5722', '#4CAF50', '#FF9800', '#9C27B0']
+    colors = ['#2196F3', '#FF5722', '#4CAF50', '#FF9800', '#9C27B0',
+             '#F44336', '#3F51B5']
 
     fig, ax = plt.subplots(figsize=(12, 5))
     for idx, (label, vals) in enumerate(results.items()):

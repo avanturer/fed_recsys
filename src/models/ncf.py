@@ -80,8 +80,18 @@ class NCF(nn.Module):
     def load_shared_params(self, params_list):
         """Загружаем shared-параметры с сервера, эмбеддинги не трогаем."""
         state = self.state_dict()
-        for key, val in zip(self.shared_param_keys(), params_list):
-            state[key] = torch.as_tensor(val)
+        keys = self.shared_param_keys()
+        if len(params_list) != len(keys):
+            raise ValueError(
+                f"Shared params: получено {len(params_list)} тензоров, ожидалось {len(keys)}"
+            )
+        for key, val in zip(keys, params_list):
+            tensor = torch.as_tensor(val)
+            if tensor.shape != state[key].shape:
+                raise ValueError(
+                    f"{key}: форма {tuple(tensor.shape)}, ожидалось {tuple(state[key].shape)}"
+                )
+            state[key] = tensor
         self.load_state_dict(state)
 
 
@@ -104,6 +114,11 @@ class HybridNCF(nn.Module):
         super().__init__()
         if mlp_layers is None:
             mlp_layers = [128, 64, 32]
+
+        # Гарантируем минимум 1 слот для приватных юзеров —
+        # если у клиента нет приватных, пустой Embedding всё ещё создаёт
+        # валидный state_dict для load/save
+        num_private_users = max(1, num_private_users)
 
         self.num_public_users = num_public_users
         self.num_private_users = num_private_users
@@ -207,6 +222,16 @@ class HybridNCF(nn.Module):
     def load_shared_params(self, params_list):
         """Загружаем shared-параметры с сервера, приватные эмбеддинги не трогаем."""
         state = self.state_dict()
-        for key, val in zip(self.shared_param_keys(), params_list):
-            state[key] = torch.as_tensor(val)
+        keys = self.shared_param_keys()
+        if len(params_list) != len(keys):
+            raise ValueError(
+                f"Shared params: получено {len(params_list)} тензоров, ожидалось {len(keys)}"
+            )
+        for key, val in zip(keys, params_list):
+            tensor = torch.as_tensor(val)
+            if tensor.shape != state[key].shape:
+                raise ValueError(
+                    f"{key}: форма {tuple(tensor.shape)}, ожидалось {tuple(state[key].shape)}"
+                )
+            state[key] = tensor
         self.load_state_dict(state)

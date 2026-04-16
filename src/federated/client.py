@@ -92,7 +92,7 @@ class RecClient(fl.client.NumPyClient):
         prox = torch.tensor(0.0, device=self.device)
         shared_keys = set(self.model.shared_param_keys())
         for name, param in self.model.named_parameters():
-            if name in shared_keys:
+            if name in shared_keys and name in self._global_params:
                 prox = prox + (param - self._global_params[name]).norm(2) ** 2
         return prox
 
@@ -268,7 +268,7 @@ class HybridRecClient(fl.client.NumPyClient):
         prox = torch.tensor(0.0, device=self.device)
         shared_keys = set(self.model.shared_param_keys())
         for name, param in self.model.named_parameters():
-            if name in shared_keys:
+            if name in shared_keys and name in self._global_params:
                 prox = prox + (param - self._global_params[name]).norm(2) ** 2
         return prox
 

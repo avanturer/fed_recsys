@@ -57,6 +57,7 @@ def _post_fl_evaluation(shared_params, cfg, data_dir):
     emb_cache = Path(data_dir) / "embed_cache"
 
     all_rmse, all_mae = [], []
+    all_hr5, all_ndcg5 = [], []
     all_hr10, all_ndcg10 = [], []
 
     print(f"\n{'='*55}")
@@ -106,6 +107,8 @@ def _post_fl_evaluation(shared_params, cfg, data_dir):
             model, test_df, all_items,
             ks=(5, 10), device="cpu", n_neg=99,
         )
+        all_hr5.append(ranking["hr@5"])
+        all_ndcg5.append(ranking["ndcg@5"])
         all_hr10.append(ranking["hr@10"])
         all_ndcg10.append(ranking["ndcg@10"])
 
@@ -114,6 +117,8 @@ def _post_fl_evaluation(shared_params, cfg, data_dir):
     results = {
         "test_rmse": float(np.mean(all_rmse)),
         "test_mae": float(np.mean(all_mae)),
+        "test_hr5": float(np.mean(all_hr5)),
+        "test_ndcg5": float(np.mean(all_ndcg5)),
         "test_hr10": float(np.mean(all_hr10)),
         "test_ndcg10": float(np.mean(all_ndcg10)),
         "per_client_rmse": all_rmse,
@@ -123,6 +128,8 @@ def _post_fl_evaluation(shared_params, cfg, data_dir):
     print(f"\n  Среднее по клиентам:")
     print(f"    RMSE    = {results['test_rmse']:.4f}")
     print(f"    MAE     = {results['test_mae']:.4f}")
+    print(f"    HR@5    = {results['test_hr5']:.4f}")
+    print(f"    NDCG@5  = {results['test_ndcg5']:.4f}")
     print(f"    HR@10   = {results['test_hr10']:.4f}")
     print(f"    NDCG@10 = {results['test_ndcg10']:.4f}")
 
@@ -139,6 +146,7 @@ def _post_fl_evaluation_hybrid(shared_params, cfg, data_dir):
     emb_cache = Path(data_dir) / "embed_cache"
 
     all_rmse, all_mae = [], []
+    all_hr5, all_ndcg5 = [], []
     all_hr10, all_ndcg10 = [], []
 
     print(f"\n{'='*55}")
@@ -218,11 +226,15 @@ def _post_fl_evaluation_hybrid(shared_params, cfg, data_dir):
 
             model_wrapper = _PrivateWrapper(model)
 
+            hr5 = hit_rate_at_k(model_wrapper, test_pairs, all_items, k=5, n_neg=99)
+            ndcg5 = ndcg_at_k(model_wrapper, test_pairs, all_items, k=5, n_neg=99)
             hr10 = hit_rate_at_k(model_wrapper, test_pairs, all_items, k=10, n_neg=99)
             ndcg10 = ndcg_at_k(model_wrapper, test_pairs, all_items, k=10, n_neg=99)
         else:
-            hr10, ndcg10 = 0.0, 0.0
+            hr5, ndcg5, hr10, ndcg10 = 0.0, 0.0, 0.0, 0.0
 
+        all_hr5.append(hr5)
+        all_ndcg5.append(ndcg5)
         all_hr10.append(hr10)
         all_ndcg10.append(ndcg10)
 
@@ -231,6 +243,8 @@ def _post_fl_evaluation_hybrid(shared_params, cfg, data_dir):
     results = {
         "test_rmse": float(np.mean(all_rmse)),
         "test_mae": float(np.mean(all_mae)),
+        "test_hr5": float(np.mean(all_hr5)),
+        "test_ndcg5": float(np.mean(all_ndcg5)),
         "test_hr10": float(np.mean(all_hr10)),
         "test_ndcg10": float(np.mean(all_ndcg10)),
         "per_client_rmse": all_rmse,
@@ -240,6 +254,8 @@ def _post_fl_evaluation_hybrid(shared_params, cfg, data_dir):
     print(f"\n  Среднее по клиентам:")
     print(f"    RMSE    = {results['test_rmse']:.4f}")
     print(f"    MAE     = {results['test_mae']:.4f}")
+    print(f"    HR@5    = {results['test_hr5']:.4f}")
+    print(f"    NDCG@5  = {results['test_ndcg5']:.4f}")
     print(f"    HR@10   = {results['test_hr10']:.4f}")
     print(f"    NDCG@10 = {results['test_ndcg10']:.4f}")
 

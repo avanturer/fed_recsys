@@ -10,12 +10,19 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import yaml
+import numpy as np
+import torch
 from src.federated.server import run_simulation
 
 
 def main():
     with open("configs/config.yaml") as f:
         cfg = yaml.safe_load(f)
+
+    # Сидируем всё для воспроизводимости
+    seed = cfg["data"].get("seed", 42)
+    torch.manual_seed(seed)
+    np.random.seed(seed)
 
     mc = cfg["model"]
     tc = cfg["training"]
@@ -37,6 +44,7 @@ def main():
         "weight_decay": fc.get("weight_decay", tc.get("weight_decay", 0)),
         "proximal_mu": mu,
         "dp": fc.get("dp", {}),
+        "seed": seed,
     }
 
     print("=" * 55)
