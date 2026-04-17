@@ -1,11 +1,11 @@
 data:
-  dataset: "ml-1m"  # "ml-1m", "ml-100k" или "amazon-music"
+  dataset: ml-1m          # ml-1m, ml-100k или amazon-music
   use_hybrid: true
   public_user_ratio: 0.5
   num_clients: 20
   genre_concentration: 0.6
   quantity_imbalance: 0.5
-  min_user_ratings: 5
+  min_user_ratings: 5     # k-core фильтрация (для amazon)
   min_item_ratings: 5
   seed: 42
 
@@ -20,14 +20,15 @@ training:
   weight_decay: 0.001
   local_epochs: 2
   centralized_epochs: 50
+  early_stop_patience: 10
 
 federated:
   num_rounds: 20
   fraction_fit: 0.5
-  strategy: "fedavg"      # "fedavg" или "fedprox"
+  strategy: fedavg        # fedavg или fedprox
   proximal_mu: 0.01
   dp:
     enabled: false
     max_grad_norm: 1.0
     noise_multiplier: 0.1
-    target_delta: 1.0e-5
+    target_delta: 1.0e-05

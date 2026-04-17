@@ -241,7 +241,7 @@ def load_amazon_ratings(data_dir="data/raw/amazon-music",
 
     df = pd.DataFrame(rows)
     if df.empty:
-        raise ValueError(f"Не удалось загрузить рейтинги из {reviews_gz}")
+        raise ValueError(f"Не удалось загрузить рейтинги из {reviews_file}")
     print(f"  Сырых рейтингов: {len(df)}, "
           f"юзеров: {df['user_id'].nunique()}, "
           f"айтемов: {df['item_id'].nunique()}")

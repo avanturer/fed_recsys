@@ -30,6 +30,19 @@ def load_pkl(path):
         return pickle.load(f)
 
 
+def get_metrics(data):
+    """Достаёт метрики из pickle любого формата (centralized или FL)."""
+    if data is None:
+        return None
+    ranking = data.get('ranking', {})
+    return {
+        'rmse': data.get('test_rmse', ranking.get('rmse', 0)),
+        'mae': data.get('test_mae', ranking.get('mae', 0)),
+        'hr10': data.get('test_hr10', ranking.get('hr@10', 0)),
+        'ndcg10': data.get('test_ndcg10', ranking.get('ndcg@10', 0)),
+    }
+
+
 def plot_data_distribution(info, data_dir, out_path):
     """Распределение данных по клиентам."""
     rows = []
@@ -117,34 +130,31 @@ def plot_comparison_curves(ch, fh, out_path):
     print(f"[OK] {out_path}")
 
 
+METHOD_LAYOUT = [
+    ('Centralized', 'centralized', 'centralized_history.pkl'),
+    ('FedAvg', 'fedavg', 'fl_history.pkl'),
+    ('FedProx', 'fedprox', 'fl_history.pkl'),
+    ('FedAvg+DP σ=0.1', 'fedavg_dp_s01', 'fl_history.pkl'),
+    ('FedProx+DP σ=0.1', 'fedprox_dp_s01', 'fl_history.pkl'),
+    ('FedAvg+DP σ=0.5', 'fedavg_dp_s05', 'fl_history.pkl'),
+    ('FedProx+DP σ=0.5', 'fedprox_dp_s05', 'fl_history.pkl'),
+    ('FedAvg+DP σ=1.0', 'fedavg_dp_s10', 'fl_history.pkl'),
+    ('FedAvg+DP σ=2.0', 'fedavg_dp_s20', 'fl_history.pkl'),
+]
+
+
 def plot_all_methods_comparison(dataset_name, out_path):
     """Сравнение всех методов (столбчатая диаграмма)."""
     res_dir = RESULTS / dataset_name
-    methods = {
-        'Centralized': ('centralized', 'centralized_history.pkl'),
-        'FedAvg': ('fedavg', 'fl_history.pkl'),
-        'FedProx': ('fedprox', 'fl_history.pkl'),
-        'FedAvg+DP (σ=0.5)': ('fedavg_dp_s05', 'fl_history.pkl'),
-        'FedProx+DP (σ=0.5)': ('fedprox_dp_s05', 'fl_history.pkl'),
-        'FedAvg+DP (σ=0.1)': ('fedavg_dp_s01', 'fl_history.pkl'),
-        'FedProx+DP (σ=0.1)': ('fedprox_dp_s01', 'fl_history.pkl'),
-    }
 
     metric_names = ['RMSE', 'MAE', 'HR@10', 'NDCG@10']
     results = {}
 
-    for label, (folder, fname) in methods.items():
-        data = load_pkl(res_dir / folder / fname)
-        if data is None:
+    for label, folder, fname in METHOD_LAYOUT:
+        m = get_metrics(load_pkl(res_dir / folder / fname))
+        if m is None:
             continue
-
-        ranking = data.get('ranking', {})
-        results[label] = [
-            data.get('test_rmse', ranking.get('rmse', 0)),
-            data.get('test_mae', ranking.get('mae', 0)),
-            data.get('test_hr10', ranking.get('hr@10', 0)),
-            data.get('test_ndcg10', ranking.get('ndcg@10', 0)),
-        ]
+        results[label] = [m['rmse'], m['mae'], m['hr10'], m['ndcg10']]
 
     if not results:
         print(f"[SKIP] {out_path} — нет данных")
@@ -153,26 +163,68 @@ def plot_all_methods_comparison(dataset_name, out_path):
     x = np.arange(len(metric_names))
     n = len(results)
     w = 0.8 / n
-    colors = ['#2196F3', '#FF5722', '#4CAF50', '#FF9800', '#9C27B0',
-             '#F44336', '#3F51B5']
+    palette = sns.color_palette('tab10', n)
 
-    fig, ax = plt.subplots(figsize=(12, 5))
+    fig, ax = plt.subplots(figsize=(13, 5.5))
     for idx, (label, vals) in enumerate(results.items()):
         offset = (idx - n / 2 + 0.5) * w
-        bars = ax.bar(x + offset, vals, w, label=label,
-                      color=colors[idx % len(colors)], alpha=0.85)
-        for bar in bars:
-            h = bar.get_height()
-            if h > 0:
-                ax.text(bar.get_x() + bar.get_width()/2, h + 0.005,
-                        f'{h:.3f}', ha='center', va='bottom', fontsize=7)
+        ax.bar(x + offset, vals, w, label=label, color=palette[idx], alpha=0.9,
+               edgecolor='white', linewidth=0.5)
 
     ax.set_xticks(x)
     ax.set_xticklabels(metric_names)
-    ax.set_ylabel('Значение')
+    ax.set_ylabel('Значение метрики')
     title = 'MovieLens-1M' if 'ml' in dataset_name else 'Amazon Digital Music'
     ax.set_title(f'Сравнение методов: {title}')
-    ax.legend(fontsize=9)
+    ax.legend(fontsize=8, loc='upper right', ncol=2)
+
+    plt.tight_layout()
+    plt.savefig(out_path)
+    plt.close()
+    print(f"[OK] {out_path}")
+
+
+def plot_privacy_utility_tradeoff(dataset_name, out_path):
+    """RMSE как функция sigma: приватность vs качество."""
+    res_dir = RESULTS / dataset_name
+    sigmas = [0.0, 0.1, 0.5, 1.0, 2.0]
+    tags = ['', 's01', 's05', 's10', 's20']
+
+    rmse_fedavg = []
+    rmse_fedprox = []
+
+    for tag in tags:
+        if tag == '':
+            fedavg_m = get_metrics(load_pkl(res_dir / 'fedavg' / 'fl_history.pkl'))
+            fedprox_m = get_metrics(load_pkl(res_dir / 'fedprox' / 'fl_history.pkl'))
+        else:
+            fedavg_m = get_metrics(load_pkl(res_dir / f'fedavg_dp_{tag}' / 'fl_history.pkl'))
+            fedprox_m = get_metrics(load_pkl(res_dir / f'fedprox_dp_{tag}' / 'fl_history.pkl'))
+        rmse_fedavg.append(fedavg_m['rmse'] if fedavg_m else None)
+        rmse_fedprox.append(fedprox_m['rmse'] if fedprox_m else None)
+
+    centr = get_metrics(load_pkl(res_dir / 'centralized' / 'centralized_history.pkl'))
+
+    fig, ax = plt.subplots(figsize=(10, 5.5))
+    fedavg_x = [s for s, r in zip(sigmas, rmse_fedavg) if r is not None]
+    fedavg_y = [r for r in rmse_fedavg if r is not None]
+    fedprox_x = [s for s, r in zip(sigmas, rmse_fedprox) if r is not None]
+    fedprox_y = [r for r in rmse_fedprox if r is not None]
+
+    ax.plot(fedavg_x, fedavg_y, 'o-', color='#FF5722', linewidth=2,
+            markersize=9, label='FedAvg')
+    ax.plot(fedprox_x, fedprox_y, 's-', color='#4CAF50', linewidth=2,
+            markersize=9, label='FedProx (μ=0.01)')
+    if centr:
+        ax.axhline(centr['rmse'], color='#2196F3', linestyle='--', alpha=0.7,
+                   label=f'Централизованный = {centr["rmse"]:.3f}')
+
+    ax.set_xlabel(r'Коэффициент шума $\sigma$')
+    ax.set_ylabel('Test RMSE')
+    title = 'MovieLens-1M' if 'ml' in dataset_name else 'Amazon Digital Music'
+    ax.set_title(f'Trade-off приватность/качество: {title}')
+    ax.legend(fontsize=10)
+    ax.grid(True, alpha=0.3)
 
     plt.tight_layout()
     plt.savefig(out_path)
@@ -225,24 +277,26 @@ def plot_per_client(fh, ch, out_path):
 
 
 def main():
-    info = load_global_info(str(DATA))
-    ch = load_pkl(DATA / 'centralized_history.pkl')
-    fh = load_pkl(DATA / 'fl_history.pkl')
+    # Основные графики строятся из data/processed/ (последний прогон)
+    if (DATA / 'global_info.pkl').exists():
+        info = load_global_info(str(DATA))
+        ch = load_pkl(DATA / 'centralized_history.pkl')
+        fh = load_pkl(DATA / 'fl_history.pkl')
 
-    print(f"Данные: {info['num_clients']} клиентов, "
-          f"{info['total_users']} юзеров, {info['total_ratings']} рейтингов")
+        print(f"Текущие данные в processed: {info['num_clients']} клиентов, "
+              f"{info['total_users']} юзеров, {info['total_ratings']} рейтингов")
 
-    # Основные графики (из последнего прогона)
-    if info and ch:
-        plot_data_distribution(info, DATA, OUT / 'data_distribution.png')
-    if ch and fh:
-        plot_comparison_curves(ch, fh, OUT / 'comparison_curves.png')
-        plot_per_client(fh, ch, OUT / 'fl_convergence.png')
+        if info and ch:
+            plot_data_distribution(info, DATA, OUT / 'data_distribution.png')
+        if ch and fh:
+            plot_comparison_curves(ch, fh, OUT / 'comparison_curves.png')
+            plot_per_client(fh, ch, OUT / 'fl_convergence.png')
 
-    # Сравнение всех методов (если есть результаты)
+    # Сравнение всех методов + trade-off по датасетам
     for ds in ['ml-1m', 'amazon-music']:
         if (RESULTS / ds).exists():
             plot_all_methods_comparison(ds, OUT / f'comparison_{ds}.png')
+            plot_privacy_utility_tradeoff(ds, OUT / f'privacy_utility_{ds}.png')
 
     print("\nГотово!")
 

@@ -103,9 +103,11 @@ def main():
 
     # Обучение
     n_epochs = tc["centralized_epochs"]
+    patience = tc.get("early_stop_patience", 10)
     history = {"train_loss": [], "val_rmse": [], "val_mae": []}
     best_rmse = float("inf")
     best_state = None
+    bad_epochs = 0
 
     for epoch in range(1, n_epochs + 1):
         model.train()
@@ -140,12 +142,19 @@ def main():
         history["val_rmse"].append(v_rmse)
         history["val_mae"].append(v_mae)
 
-        if v_rmse < best_rmse:
+        if v_rmse < best_rmse - 1e-4:
             best_rmse = v_rmse
             best_state = copy.deepcopy(model.state_dict())
+            bad_epochs = 0
+        else:
+            bad_epochs += 1
 
         if epoch % 5 == 0 or epoch == 1:
             print(f"  Epoch {epoch:3d}: loss={avg_loss:.4f}  val_rmse={v_rmse:.4f}  val_mae={v_mae:.4f}")
+
+        if bad_epochs >= patience:
+            print(f"  Early stopping на эпохе {epoch} (patience={patience}, best val_rmse={best_rmse:.4f})")
+            break
 
     # Тест
     model.load_state_dict(best_state)
