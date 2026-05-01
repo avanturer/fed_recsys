@@ -14,11 +14,17 @@ import os
 import flwr as fl
 import numpy as np
 import torch
+from flwr.common import Context
 from torch.utils.data import DataLoader
 
 from src.models.ncf import NCF, HybridNCF
 from src.data.splitter import ClientDataset, HybridClientDataset, load_client_data
 from src.federated.privacy import clip_and_add_noise
+
+
+def _resolve_cid(context: Context) -> int:
+    """ID клиента в новом Flower API живёт в node_config['partition-id']."""
+    return int(context.node_config["partition-id"])
 
 
 class RecClient(fl.client.NumPyClient):
@@ -372,10 +378,10 @@ class HybridRecClient(fl.client.NumPyClient):
 def make_client_fn(cfg, data_dir="data/processed"):
     """
     Фабрика клиентов для Flower-симуляции.
-    Каждый вызов client_fn(cid) создаёт нового клиента с его локальными данными.
+    Каждый вызов client_fn(context) создаёт нового клиента с его локальными данными.
     """
-    def client_fn(cid):
-        client_id = int(cid)
+    def client_fn(context: Context):
+        client_id = _resolve_cid(context)
         data = load_client_data(client_id, data_dir)
 
         train_ds = ClientDataset(data["train"])
@@ -394,7 +400,7 @@ def make_client_fn(cfg, data_dir="data/processed"):
             dropout=cfg.get("dropout", 0.2),
         )
 
-        return RecClient(
+        client = RecClient(
             client_id=client_id,
             model=model,
             train_loader=train_loader,
@@ -406,6 +412,7 @@ def make_client_fn(cfg, data_dir="data/processed"):
             mu=cfg.get("proximal_mu", 0.0),
             dp_config=cfg.get("dp", {}),
         )
+        return client.to_client()
 
     return client_fn
 
@@ -414,8 +421,8 @@ def make_hybrid_client_fn(cfg, data_dir="data/processed"):
     """
     Фабрика клиентов для гибридного сценария.
     """
-    def client_fn(cid):
-        client_id = int(cid)
+    def client_fn(context: Context):
+        client_id = _resolve_cid(context)
         data = load_client_data(client_id, data_dir)
 
         train_ds = HybridClientDataset(data["train"])
@@ -435,7 +442,7 @@ def make_hybrid_client_fn(cfg, data_dir="data/processed"):
             dropout=cfg.get("dropout", 0.2),
         )
 
-        return HybridRecClient(
+        client = HybridRecClient(
             client_id=client_id,
             model=model,
             train_loader=train_loader,
@@ -447,5 +454,6 @@ def make_hybrid_client_fn(cfg, data_dir="data/processed"):
             mu=cfg.get("proximal_mu", 0.0),
             dp_config=cfg.get("dp", {}),
         )
+        return client.to_client()
 
     return client_fn

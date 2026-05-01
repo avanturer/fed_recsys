@@ -4,6 +4,14 @@
 FedAvg/FedProx агрегация только shared-параметров.
 Опционально: дифференциальная приватность.
 """
+import os
+# Гасим телеметрию Ray до импорта — иначе env vars уже не подхватятся.
+# На WSL2 без этого GCS копит task events и через 15-20 минут падает.
+os.environ.setdefault("RAY_DEDUP_LOGS", "1")
+os.environ.setdefault("RAY_event_stats", "0")
+os.environ.setdefault("RAY_record_ref_creation_sites", "0")
+os.environ.setdefault("RAY_record_task_actor_creation_sites", "0")
+
 import sys
 from pathlib import Path
 
@@ -12,6 +20,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 import yaml
 import numpy as np
 import torch
+
 from src.federated.server import run_simulation
 
 

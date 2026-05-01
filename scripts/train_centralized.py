@@ -13,6 +13,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import yaml
 import numpy as np
+import pandas as pd
 import torch
 from torch.utils.data import DataLoader, Dataset
 
@@ -74,14 +75,29 @@ def main():
     print(f"Данные: {label}")
     print(f"        {n_users} юзеров, {n_items} айтемов, {len(ratings)} рейтингов")
 
-    ratings = ratings.sample(frac=1, random_state=seed).reset_index(drop=True)
-    n = len(ratings)
-    n_test = int(n * 0.1)
-    n_val = int(n * 0.1)
-
-    train_df = ratings[:n - n_test - n_val]
-    val_df = ratings[n - n_test - n_val:n - n_test]
-    test_df = ratings[n - n_test:]
+    # Используем общий global_test.pkl для честного сравнения с FL.
+    # Если его нет — fallback на случайный split.
+    global_test_path = Path("data/processed/global_test.pkl")
+    if global_test_path.exists():
+        with open(global_test_path, "rb") as f:
+            gt = pickle.load(f)
+        test_df = pd.concat([gt["public"], gt["private"]], ignore_index=True)
+        test_keys = set(zip(test_df["user_id"], test_df["item_id"]))
+        mask = [(u, i) not in test_keys
+                for u, i in zip(ratings["user_id"], ratings["item_id"])]
+        trainval = ratings[mask].sample(frac=1, random_state=seed).reset_index(drop=True)
+        n_val = int(len(trainval) * 0.11)  # ~10% от всех данных
+        val_df = trainval[:n_val]
+        train_df = trainval[n_val:]
+        print(f"  Общий global test: {len(test_df)} рейтингов")
+    else:
+        ratings = ratings.sample(frac=1, random_state=seed).reset_index(drop=True)
+        n = len(ratings)
+        n_test = int(n * 0.1)
+        n_val = int(n * 0.1)
+        train_df = ratings[:n - n_test - n_val]
+        val_df = ratings[n - n_test - n_val:n - n_test]
+        test_df = ratings[n - n_test:]
 
     train_loader = DataLoader(RatingsDataset(train_df), batch_size=tc["batch_size"], shuffle=True)
     val_loader = DataLoader(RatingsDataset(val_df), batch_size=tc["batch_size"])

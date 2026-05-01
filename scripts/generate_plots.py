@@ -131,30 +131,28 @@ def plot_comparison_curves(ch, fh, out_path):
 
 
 METHOD_LAYOUT = [
-    ('Centralized', 'centralized', 'centralized_history.pkl'),
-    ('FedAvg', 'fedavg', 'fl_history.pkl'),
-    ('FedProx', 'fedprox', 'fl_history.pkl'),
-    ('FedAvg+DP σ=0.1', 'fedavg_dp_s01', 'fl_history.pkl'),
-    ('FedProx+DP σ=0.1', 'fedprox_dp_s01', 'fl_history.pkl'),
-    ('FedAvg+DP σ=0.5', 'fedavg_dp_s05', 'fl_history.pkl'),
-    ('FedProx+DP σ=0.5', 'fedprox_dp_s05', 'fl_history.pkl'),
-    ('FedAvg+DP σ=1.0', 'fedavg_dp_s10', 'fl_history.pkl'),
-    ('FedAvg+DP σ=2.0', 'fedavg_dp_s20', 'fl_history.pkl'),
+    ('Centralized',       'centralized',     'centralized_history.pkl'),
+    ('FedAvg',            'fedavg',          'fl_history.pkl'),
+    ('FedProx (μ=0.01)',  'fedprox',         'fl_history.pkl'),
+    ('FedAvg+DP σ=0.1',   'fedavg_dp_s01',   'fl_history.pkl'),
+    ('FedAvg+DP σ=0.5',   'fedavg_dp_s05',   'fl_history.pkl'),
+    ('FedAvg+DP σ=1.0',   'fedavg_dp_s10',   'fl_history.pkl'),
+    ('FedAvg+DP σ=2.0',   'fedavg_dp_s20',   'fl_history.pkl'),
+    ('FedProx+DP σ=0.1',  'fedprox_dp_s01',  'fl_history.pkl'),
+    ('FedProx+DP σ=0.5',  'fedprox_dp_s05',  'fl_history.pkl'),
 ]
 
-
 def plot_all_methods_comparison(dataset_name, out_path):
-    """Сравнение всех методов (столбчатая диаграмма)."""
-    res_dir = RESULTS / dataset_name
-
+    """Столбчатая диаграмма метрик по всем методам датасета."""
     metric_names = ['RMSE', 'MAE', 'HR@10', 'NDCG@10']
+    metric_keys = ['rmse', 'mae', 'hr10', 'ndcg10']
     results = {}
 
     for label, folder, fname in METHOD_LAYOUT:
-        m = get_metrics(load_pkl(res_dir / folder / fname))
+        m = get_metrics(load_pkl(RESULTS / dataset_name / folder / fname))
         if m is None:
             continue
-        results[label] = [m['rmse'], m['mae'], m['hr10'], m['ndcg10']]
+        results[label] = [m[k] for k in metric_keys]
 
     if not results:
         print(f"[SKIP] {out_path} — нет данных")
@@ -168,7 +166,8 @@ def plot_all_methods_comparison(dataset_name, out_path):
     fig, ax = plt.subplots(figsize=(13, 5.5))
     for idx, (label, vals) in enumerate(results.items()):
         offset = (idx - n / 2 + 0.5) * w
-        ax.bar(x + offset, vals, w, label=label, color=palette[idx], alpha=0.9,
+        ax.bar(x + offset, vals, w, label=label,
+               color=palette[idx], alpha=0.9,
                edgecolor='white', linewidth=0.5)
 
     ax.set_xticks(x)
@@ -176,7 +175,7 @@ def plot_all_methods_comparison(dataset_name, out_path):
     ax.set_ylabel('Значение метрики')
     title = 'MovieLens-1M' if 'ml' in dataset_name else 'Amazon Digital Music'
     ax.set_title(f'Сравнение методов: {title}')
-    ax.legend(fontsize=8, loc='upper right', ncol=2)
+    ax.legend(fontsize=8, loc='upper right', ncol=3)
 
     plt.tight_layout()
     plt.savefig(out_path)
@@ -234,8 +233,10 @@ def plot_privacy_utility_tradeoff(dataset_name, out_path):
 
 def plot_per_client(fh, ch, out_path):
     """RMSE и HR@10 по клиентам."""
-    if 'per_client_rmse' not in fh:
-        print(f"[SKIP] {out_path} — нет per_client_rmse")
+    # В гибридном режиме per_client_rmse пуст: RMSE считается на общем тесте,
+    # а не per-client. Тогда график имеет смысл только если данные есть.
+    if not fh.get('per_client_rmse'):
+        print(f"[SKIP] {out_path} — per_client_rmse пуст (гибридный режим)")
         return
 
     fig, axes = plt.subplots(1, 2, figsize=(14, 5))
@@ -276,29 +277,74 @@ def plot_per_client(fh, ch, out_path):
     print(f"[OK] {out_path}")
 
 
+DATASET_OVERRIDES = {
+    'ml-1m': {
+        'data': {'dataset': 'ml-1m', 'num_clients': 20,
+                 'min_user_ratings': 5, 'min_item_ratings': 5},
+        'model': {'embedding_dim': 64},
+    },
+    'amazon-music': {
+        'data': {'dataset': 'amazon-music', 'num_clients': 10,
+                 'min_user_ratings': 2, 'min_item_ratings': 2},
+        'model': {'embedding_dim': 16},
+    },
+}
+
+
+def _rebuild_processed_for(dataset_name):
+    """Перезаписывает data/processed/ под конкретный датасет."""
+    import subprocess, sys, yaml, copy
+    cfg_path = Path('configs/config.yaml')
+    with open(cfg_path) as f:
+        cfg = yaml.safe_load(f)
+    for section, values in DATASET_OVERRIDES[dataset_name].items():
+        cfg[section].update(values)
+    with open(cfg_path, 'w') as f:
+        yaml.dump(cfg, f, allow_unicode=True, default_flow_style=False, sort_keys=False)
+    res = subprocess.run([sys.executable, 'scripts/prepare_data.py'],
+                         capture_output=True)
+    return res.returncode == 0
+
+
 def main():
-    # Основные графики строятся из data/processed/ (последний прогон)
-    if (DATA / 'global_info.pkl').exists():
-        info = load_global_info(str(DATA))
-        ch = load_pkl(DATA / 'centralized_history.pkl')
-        fh = load_pkl(DATA / 'fl_history.pkl')
+    # Не хотим пачкать configs/config.yaml — сохраняем как текст и возвращаем
+    cfg_path = Path('configs/config.yaml')
+    original_text = cfg_path.read_text()
 
-        print(f"Текущие данные в processed: {info['num_clients']} клиентов, "
-              f"{info['total_users']} юзеров, {info['total_ratings']} рейтингов")
+    try:
+        for ds in ['ml-1m', 'amazon-music']:
+            if not (RESULTS / ds).exists():
+                continue
+            print(f"\n--- {ds} ---")
+            if not _rebuild_processed_for(ds):
+                print(f"  [SKIP] не удалось подготовить данные для {ds}")
+                continue
 
-        if info and ch:
-            plot_data_distribution(info, DATA, OUT / 'data_distribution.png')
-        if ch and fh:
-            plot_comparison_curves(ch, fh, OUT / 'comparison_curves.png')
-            plot_per_client(fh, ch, OUT / 'fl_convergence.png')
+            info = load_global_info(str(DATA))
+            ch = load_pkl(RESULTS / ds / 'centralized' / 'centralized_history.pkl')
+            fh = load_pkl(RESULTS / ds / 'fedavg' / 'fl_history.pkl')
 
-    # Сравнение всех методов + trade-off по датасетам
-    for ds in ['ml-1m', 'amazon-music']:
-        if (RESULTS / ds).exists():
+            print(f"  данные: {info['num_clients']} клиентов, "
+                  f"{info['total_users']} юзеров, {info['total_ratings']} рейтингов")
+
+            if info and ch:
+                plot_data_distribution(info, DATA, OUT / f'data_distribution_{ds}.png')
+            if ch and fh:
+                plot_comparison_curves(ch, fh, OUT / f'comparison_curves_{ds}.png')
+
             plot_all_methods_comparison(ds, OUT / f'comparison_{ds}.png')
             plot_privacy_utility_tradeoff(ds, OUT / f'privacy_utility_{ds}.png')
 
-    print("\nГотово!")
+        # Чистим старые "общие" файлы от прошлых версий скрипта
+        for stale in ['data_distribution.png', 'comparison_curves.png',
+                      'fl_convergence.png']:
+            p = OUT / stale
+            if p.exists():
+                p.unlink()
+
+        print("\nГотово!")
+    finally:
+        cfg_path.write_text(original_text)
 
 
 if __name__ == '__main__':

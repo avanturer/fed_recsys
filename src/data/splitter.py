@@ -292,6 +292,29 @@ def split_hybrid_non_iid(ratings, movies, num_clients=20,
     all_items = ratings["item_id"].unique()
     item_map = {it: it for it in all_items}
 
+    # Откладываем глобальный test (10% триплетов) — единый для centralized и FL.
+    # Даём стабильный random_state (не меняется с seed для splitter'а),
+    # чтобы один и тот же test можно было использовать для сравнения разных подходов.
+    pub_trainval, pub_test = train_test_split(
+        public_ratings, test_size=0.1, random_state=seed,
+    )
+    priv_trainval, priv_test = train_test_split(
+        private_ratings, test_size=0.1, random_state=seed,
+    )
+    public_ratings = pub_trainval
+    private_ratings = priv_trainval
+
+    # Сохраняем global test отдельно
+    global_test = {
+        "public": pub_test.copy(),
+        "private": priv_test.copy(),
+        "public_user_map": public_user_map,
+    }
+    with open(out / "global_test.pkl", "wb") as f:
+        pickle.dump(global_test, f)
+    print(f"  Global test: {len(pub_test)} публ. + {len(priv_test)} прив. = "
+          f"{len(pub_test) + len(priv_test)} рейтингов")
+
     # Распределяем приватных юзеров по клиентам (non-IID)
     user_pref = _find_user_genre_pref(private_ratings)
 
@@ -353,12 +376,13 @@ def split_hybrid_non_iid(ratings, movies, num_clients=20,
         public_cr["is_public"] = 1
         private_cr["is_public"] = 0
 
-        # Все данные клиента
+        # Все данные клиента (уже без global test — он отложен выше)
         client_data = pd.concat([public_cr, private_cr], ignore_index=True)
 
-        # Разбиваем на train/val/test
-        train, tmp = train_test_split(client_data, test_size=0.2, random_state=seed)
-        val, test = train_test_split(tmp, test_size=0.5, random_state=seed)
+        # Локальный test для per-client ranking-оценки (private users клиента).
+        # Общие метрики считаются на global_test.
+        train, tmp = train_test_split(client_data, test_size=0.15, random_state=seed)
+        val, test = train_test_split(tmp, test_size=0.33, random_state=seed)
 
         genre_dist_all = client_data["genre"].value_counts(normalize=True)
         main_g = client_genres[cid]["main"]
